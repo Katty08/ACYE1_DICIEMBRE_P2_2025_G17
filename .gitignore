@@ -1,2 +1,5 @@
 *.o
 aes
+.idea/
+.vscode/
+
