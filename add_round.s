@@ -1,8 +1,8 @@
 /* =========================================
  * add_round.s
  * AddRoundKey - AES-128
- * r0 = &state
- * r1 = &round_key
+ * x0 = &state
+ * x1 = &round_key
  * ========================================= */
 
 .section .text
@@ -10,22 +10,24 @@
 .global add_round
 
 add_round:
-    push {r4, r5, r6, lr}   @ preservar registros
+    stp x19, x20, [sp, #-32]!
+    stp x21, x30, [sp, #16]
 
-    mov r4, #0              @ contador i = 0
+    mov w19, #0             // contador i = 0
 
 loop_add:
-    cmp r4, #16
-    beq end_add
+    cmp w19, #16
+    b.eq end_add
 
-    ldrb r5, [r0, r4]       @ r5 = state[i]
-    ldrb r6, [r1, r4]       @ r6 = key[i]
-    eor  r5, r5, r6         @ state[i] ^= key[i]
-    strb r5, [r0, r4]       @ guardar resultado
+    ldrb w20, [x0, x19]     // w20 = state[i]
+    ldrb w21, [x1, x19]     // w21 = key[i]
+    eor  w20, w20, w21      // state[i] ^= key[i]
+    strb w20, [x0, x19]     // guardar resultado
 
-    add r4, r4, #1
+    add w19, w19, #1
     b loop_add
 
 end_add:
-    pop {r4, r5, r6, lr}
-    bx lr
+    ldp x21, x30, [sp, #16]
+    ldp x19, x20, [sp], #32
+    ret

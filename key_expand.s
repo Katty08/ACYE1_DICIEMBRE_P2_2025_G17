@@ -1,7 +1,7 @@
 /* =========================================================
  * key_expand.s
  * Key Expansion – AES-128 (FIPS-197 CORRECTO)
- * Arquitectura: ARMv7 (32 bits)
+ * Arquitectura: ARM64
  * ========================================================= */
 
 .section .data
@@ -37,79 +37,91 @@ sbox:
 
 /* ---------------------------------------------------------
  * key_expand
- * r0 = key (16 bytes)
- * r1 = round_keys (176 bytes)
+ * x0 = key (16 bytes)
+ * x1 = round_keys (176 bytes)
  * --------------------------------------------------------- */
 key_expand:
-    push {r4-r12, lr}
+    stp x19, x20, [sp, #-96]!
+    stp x21, x22, [sp, #16]
+    stp x23, x24, [sp, #32]
+    stp x25, x26, [sp, #48]
+    stp x27, x28, [sp, #64]
+    stp x29, x30, [sp, #80]
 
     /* Copiar clave original */
-    mov r2, #16
+    mov w2, #16
 copy_key:
-    ldrb r3, [r0], #1
-    strb r3, [r1], #1
-    subs r2, r2, #1
-    bne copy_key
+    ldrb w3, [x0], #1
+    strb w3, [x1], #1
+    subs w2, w2, #1
+    b.ne copy_key
 
     /* i = 16 */
-    mov r4, #16
-    ldr r10, =rcon
-    mov r11, #0
-    ldr r12, =sbox
+    mov w19, #16
+    adrp x24, rcon
+    add  x24, x24, :lo12:rcon
+    mov w25, #0
+    adrp x26, sbox
+    add  x26, x26, :lo12:sbox
 
 gen_loop:
     /* temp = w[i-1] */
-    sub r5, r1, #4
-    ldrb r6, [r5]
-    ldrb r7, [r5,#1]
-    ldrb r8, [r5,#2]
-    ldrb r9, [r5,#3]
+    sub x20, x1, #4
+    ldrb w21, [x20]
+    ldrb w22, [x20, #1]
+    ldrb w23, [x20, #2]
+    ldrb w27, [x20, #3]
 
     /* if (i % 16 == 0) */
-    tst r4, #0x0F
-    bne no_core
+    tst w19, #0x0F
+    b.ne no_core
 
     /* RotWord */
-    mov r2, r6
-    mov r6, r7
-    mov r7, r8
-    mov r8, r9
-    mov r9, r2
+    mov w2, w21
+    mov w21, w22
+    mov w22, w23
+    mov w23, w27
+    mov w27, w2
 
     /* SubWord */
-    ldrb r6, [r12, r6]
-    ldrb r7, [r12, r7]
-    ldrb r8, [r12, r8]
-    ldrb r9, [r12, r9]
+    ldrb w21, [x26, x21]
+    ldrb w22, [x26, x22]
+    ldrb w23, [x26, x23]
+    ldrb w27, [x26, x27]
 
     /* Rcon */
-    ldrb r2, [r10, r11]
-    eor r6, r6, r2
-    add r11, r11, #1
+    ldrb w2, [x24, x25]
+    eor w21, w21, w2
+    add w25, w25, #1
 
 no_core:
     /* w[i] = w[i-16] ^ temp (BYTE A BYTE, ENCADENADO) */
 
-    ldrb r2, [r1, #-16]
-    eor r6, r6, r2
-    strb r6, [r1], #1
+    ldrb w2, [x1, #-16]
+    eor w21, w21, w2
+    strb w21, [x1], #1
 
-    ldrb r2, [r1, #-16]
-    eor r7, r7, r2
-    strb r7, [r1], #1
+    ldrb w2, [x1, #-16]
+    eor w22, w22, w2
+    strb w22, [x1], #1
 
-    ldrb r2, [r1, #-16]
-    eor r8, r8, r2
-    strb r8, [r1], #1
+    ldrb w2, [x1, #-16]
+    eor w23, w23, w2
+    strb w23, [x1], #1
 
-    ldrb r2, [r1, #-16]
-    eor r9, r9, r2
-    strb r9, [r1], #1
+    ldrb w2, [x1, #-16]
+    eor w27, w27, w2
+    strb w27, [x1], #1
 
-    add r4, r4, #4
-    cmp r4, #176
-    blt gen_loop
+    add w19, w19, #4
+    cmp w19, #176
+    b.lt gen_loop
 
-    pop {r4-r12, lr}
-    bx lr
+    ldp x29, x30, [sp, #80]
+    ldp x27, x28, [sp, #64]
+    ldp x25, x26, [sp, #48]
+    ldp x23, x24, [sp, #32]
+    ldp x21, x22, [sp, #16]
+    ldp x19, x20, [sp], #96
+    ret
 

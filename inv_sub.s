@@ -50,20 +50,25 @@ inv_sbox:
 
 /* -----------------------------------------
  * inv_sub
- * r0 = puntero al estado (16 bytes)
+ * x0 = puntero al estado (16 bytes)
  * ----------------------------------------- */
 inv_sub:
-    push {r4-r6, lr}
+    stp x19, x20, [sp, #-48]!
+    stp x21, x22, [sp, #16]
+    stp x30, xzr, [sp, #32]
 
-    ldr r1, =inv_sbox
-    mov r2, #16              @ contador
+    adrp x19, inv_sbox
+    add  x19, x19, :lo12:inv_sbox
+    mov w20, #16             // contador
 
 loop:
-    ldrb r3, [r0]            @ byte estado
-    ldrb r4, [r1, r3]        @ inv_sbox[byte]
-    strb r4, [r0], #1        @ escribir y avanzar
-    subs r2, r2, #1
-    bne loop
+    ldrb w21, [x0]           // byte estado
+    ldrb w22, [x19, x21]     // inv_sbox[byte]
+    strb w22, [x0], #1       // escribir y avanzar
+    subs w20, w20, #1
+    b.ne loop
 
-    pop {r4-r6, lr}
-    bx lr
+    ldp x30, xzr, [sp, #32]
+    ldp x21, x22, [sp, #16]
+    ldp x19, x20, [sp], #48
+    ret

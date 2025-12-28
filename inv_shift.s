@@ -1,7 +1,7 @@
 /* =========================================
  * inv_shift.s
  * InvShiftRows – AES-128
- * Arquitectura: ARMv7
+ * Arquitectura: ARM64
  * ========================================= */
 
 .section .text
@@ -10,43 +10,47 @@
 
 /* -----------------------------------------
  * inv_shift
- * r0 = puntero al estado (16 bytes)
+ * x0 = puntero al estado (16 bytes)
  * ----------------------------------------- */
 inv_shift:
-    push {r4-r7, lr}
+    stp x19, x20, [sp, #-48]!
+    stp x21, x22, [sp, #16]
+    stp x30, xzr, [sp, #32]
 
     /* ===== Fila 1 (rotar derecha 1) ===== */
-    ldrb r1, [r0, #13]
-    ldrb r2, [r0, #9]
-    ldrb r3, [r0, #5]
-    ldrb r4, [r0, #1]
+    ldrb w19, [x0, #13]
+    ldrb w20, [x0, #9]
+    ldrb w21, [x0, #5]
+    ldrb w22, [x0, #1]
 
-    strb r1, [r0, #1]
-    strb r2, [r0, #5]
-    strb r3, [r0, #9]
-    strb r4, [r0, #13]
+    strb w19, [x0, #1]
+    strb w20, [x0, #5]
+    strb w21, [x0, #9]
+    strb w22, [x0, #13]
 
     /* ===== Fila 2 (rotar derecha 2) ===== */
-    ldrb r1, [r0, #10]
-    ldrb r2, [r0, #14]
-    ldrb r3, [r0, #2]
-    ldrb r4, [r0, #6]
+    ldrb w19, [x0, #10]
+    ldrb w20, [x0, #14]
+    ldrb w21, [x0, #2]
+    ldrb w22, [x0, #6]
 
-    strb r1, [r0, #2]
-    strb r2, [r0, #6]
-    strb r3, [r0, #10]
-    strb r4, [r0, #14]
+    strb w19, [x0, #2]
+    strb w20, [x0, #6]
+    strb w21, [x0, #10]
+    strb w22, [x0, #14]
 
     /* ===== Fila 3 (rotar derecha 3) ===== */
-    ldrb r1, [r0, #7]
-    ldrb r2, [r0, #11]
-    ldrb r3, [r0, #15]
-    ldrb r4, [r0, #3]
+    ldrb w19, [x0, #7]
+    ldrb w20, [x0, #11]
+    ldrb w21, [x0, #15]
+    ldrb w22, [x0, #3]
 
-    strb r1, [r0, #3]
-    strb r2, [r0, #7]
-    strb r3, [r0, #11]
-    strb r4, [r0, #15]
+    strb w19, [x0, #3]
+    strb w20, [x0, #7]
+    strb w21, [x0, #11]
+    strb w22, [x0, #15]
 
-    pop {r4-r7, lr}
-    bx lr
+    ldp x30, xzr, [sp, #32]
+    ldp x21, x22, [sp, #16]
+    ldp x19, x20, [sp], #48
+    ret

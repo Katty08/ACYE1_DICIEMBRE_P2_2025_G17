@@ -1,9 +1,9 @@
 # =========================================
-# Makefile - AES-128 ARMv7
+# Makefile - AES-128 ARM64
 # =========================================
 
-AS = as
-LD = ld
+AS = aarch64-linux-gnu-as
+LD = aarch64-linux-gnu-ld
 
 OBJS = main.o key_expand.o inv_mix.o add_round.o inv_shift.o inv_sub.o
 

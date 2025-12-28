@@ -2,7 +2,7 @@
  * main.s
  * AES-128 – Descifrado
  * Persona 1 – Flujo general del algoritmo
- * Arquitectura: ARMv7 (32 bits)
+ * Arquitectura: ARM64
  * ========================================================= */
 
 .section .bss
@@ -45,62 +45,75 @@ round:
 _start:
 
     /* Copiar ciphertext a state */
-    ldr r0, =ciphertext
-    ldr r1, =state
-    mov r2, #16
+    adrp x0, ciphertext
+    add  x0, x0, :lo12:ciphertext
+    adrp x1, state
+    add  x1, x1, :lo12:state
+    mov w2, #16
 
 copy_state:
-    ldrb r3, [r0], #1
-    strb r3, [r1], #1
-    subs r2, r2, #1
-    bne copy_state
+    ldrb w3, [x0], #1
+    strb w3, [x1], #1
+    subs w2, w2, #1
+    b.ne copy_state
 
 
     /* Subclave final */
-    ldr r1, =round_keys
-    add r1, r1, #160
+    adrp x1, round_keys
+    add  x1, x1, :lo12:round_keys
+    add  x1, x1, #160
 
 
     /* Ronda inicial */
-    ldr r0, =state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl add_round
 
 
 round_loop:
-    ldr r4, =round
-    ldr r5, [r4]
-    cmp r5, #1
-    beq final_round
+    adrp x4, round
+    add  x4, x4, :lo12:round
+    ldr w5, [x4]
+    cmp w5, #1
+    b.eq final_round
 
-    ldr r0, =state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl inv_shift
 
-    ldr r0, =state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl inv_sub
 
-    sub r1, r1, #16
+    sub x1, x1, #16
 
-    ldr r0, =state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl add_round
 
-    ldr r0, =state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl inv_mix
 
-    sub r5, r5, #1
-    str r5, [r4]
+    sub w5, w5, #1
+    str w5, [x4]
     b round_loop
 
 
 final_round:
-    ldr r0, =state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl inv_shift
 
-    ldr r0, =state
+    adrp x0, state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl inv_sub
 
-    sub r1, r1, #16
+    sub x1, x1, #16
 
-    ldr r0, =state
+    adrp x0, state
+    add  x0, x0, :lo12:state
     bl add_round
 
     /*  DETENER EJECUCIÓN PARA DEBUG */
@@ -108,6 +121,6 @@ final_round:
 
 
 exit:
-    mov r0, #0
-    mov r7, #1
-    swi 0
+    mov x0, #0
+    mov x8, #93
+    svc #0
