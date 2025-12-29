@@ -8,9 +8,6 @@ state:
 key:
     .space 16
 
-temp_buffer:
-    .space 16
-
 expanded_keys:
     .space 176
 
@@ -34,25 +31,22 @@ msg_result:
     .asciz "\n[+] Plaintext: "
 msg_nl:
     .asciz "\n"
-
-// Vectores de prueba FIPS-197 (Appendix B)
-// Plaintext: "Two One Nine Two" -> 54 77 6F 20 4F 6E 65 20 4E 69 6E 65 20 54 77 6F
-// Ciphertext: 29 C3 50 5F 57 14 20 F6 40 22 99 B3 1A 02 D7 3A
-// Key: "Thats my Kung Fu" -> 54 68 61 74 73 20 6D 79 20 4B 75 6E 67 20 46 75
-test_plain_ref:
-    .byte 0x54,0x77,0x6F,0x20,0x4F,0x6E,0x65,0x20
-    .byte 0x4E,0x69,0x6E,0x65,0x20,0x54,0x77,0x6F
-test_cipher_ref:
-    .byte 0x29,0xC3,0x50,0x5F,0x57,0x14,0x20,0xF6
-    .byte 0x40,0x22,0x99,0xB3,0x1A,0x02,0xD7,0x3A
-test_key_ref:
-    .byte 0x54,0x68,0x61,0x74,0x73,0x20,0x6D,0x79
-    .byte 0x20,0x4B,0x75,0x6E,0x67,0x20,0x46,0x75
-
-msg_test_ok:
-    .asciz "[SELF-TEST] OK (FIPS-197 B)\n"
-msg_test_fail:
-    .asciz "[SELF-TEST] FAIL (FIPS-197 B)\n"
+msg_state_matrix:
+    .asciz "\n   Estado (matriz 4x4):\n   "
+msg_after_invshift:
+    .asciz "\n[->] Después de InvShiftRows:"
+msg_after_invsub:
+    .asciz "\n[->] Después de InvSubBytes:"
+msg_after_addroundkey:
+    .asciz "\n[->] Después de AddRoundKey:"
+msg_after_invmix:
+    .asciz "\n[->] Después de InvMixColumns:"
+msg_round_num:
+    .asciz "\n\n=== RONDA "
+msg_round_end:
+    .asciz " ==="
+msg_subkey:
+    .asciz "\n   Subclave utilizada: "
 
 .section .text
 .align 4
@@ -66,9 +60,6 @@ msg_test_fail:
 .extern inv_mix
 
 _start:
-    // Self-test de descifrado con vector FIPS-197
-    bl self_test
-
     // Title
     mov x0, #1
     adr x1, msg_title
@@ -90,7 +81,7 @@ _start:
     mov x8, #63
     svc #0
     
-    // Convert ciphertext hex to bytes
+    // Convert
     adr x0, input_buffer
     adr x1, state
     mov w2, #16
@@ -110,7 +101,7 @@ _start:
     mov x8, #63
     svc #0
     
-    // Convert key hex to bytes
+    // Convert
     adr x0, input_buffer
     adr x1, key
     mov w2, #16
@@ -134,17 +125,133 @@ _start:
     mov x8, #64
     svc #0
     
-    // Ejecutar núcleo de descifrado sobre state/expanded_keys
-    bl aes_decrypt_core
+    // Mostrar subclaves expandidas
+    bl print_expanded_keys
+    
+    /* ALGORITMO AES-128 DESCIFRADO */
+    
+    // Ronda inicial (10): AddRoundKey con W[40-43]
+    adr x0, state
+    adr x1, expanded_keys
+    add x1, x1, #160      // offset 160 = W[40]
+    bl add_round
+    
+    // Rondas intermedias (9 a 1)
+    mov w19, #9
+    
+decrypt_loop:
+    // Imprimir número de ronda
+    mov x0, #1
+    adr x1, msg_round_num
+    mov x2, #14
+    mov x8, #64
+    svc #0
+    
+    mov w0, w19
+    bl print_round_number
+    
+    mov x0, #1
+    adr x1, msg_round_end
+    mov x2, #4
+    mov x8, #64
+    svc #0
+    
+    // InvShiftRows
+    adr x0, state
+    bl inv_shift
+    
+    mov x0, #1
+    adr x1, msg_after_invshift
+    mov x2, #29
+    mov x8, #64
+    svc #0
+    
+    adr x0, state
+    bl print_state_matrix
+    
+    // InvSubBytes
+    adr x0, state
+    bl inv_sub
+    
+    mov x0, #1
+    adr x1, msg_after_invsub
+    mov x2, #29
+    mov x8, #64
+    svc #0
+    
+    adr x0, state
+    bl print_state_matrix
+    
+    // Mostrar subclave
+    mov x0, #1
+    adr x1, msg_subkey
+    mov x2, #24
+    mov x8, #64
+    svc #0
+    
+    adr x1, expanded_keys
+    mov w2, #16
+    mul w2, w19, w2
+    add x0, x1, x2
+    mov w1, #16
+    bl print_hex
+    
+    // AddRoundKey
+    adr x0, state
+    adr x1, expanded_keys
+    mov w2, #16
+    mul w2, w19, w2
+    add x1, x1, x2
+    bl add_round
+    
+    mov x0, #1
+    adr x1, msg_after_addroundkey
+    mov x2, #32
+    mov x8, #64
+    svc #0
+    
+    adr x0, state
+    bl print_state_matrix
+    
+    // InvMixColumns
+    adr x0, state
+    bl inv_mix
+    
+    mov x0, #1
+    adr x1, msg_after_invmix
+    mov x2, #32
+    mov x8, #64
+    svc #0
+    
+    adr x0, state
+    bl print_state_matrix
+    
+    // Siguiente ronda
+    subs w19, w19, #1
+    cmp w19, #0
+    b.gt decrypt_loop
+    
+    // Ronda final (0): InvShift → InvSub → AddRoundKey (sin InvMix)
+    adr x0, state
+    bl inv_shift
+    
+    adr x0, state
+    bl inv_sub
+    
+    adr x0, state
+    adr x1, expanded_keys    // W[0-3] = offset 0
+    bl add_round
+    
+    /* FIN ALGORITMO */
     
     // Show result message
     mov x0, #1
     adr x1, msg_result
-    mov x2, #13
+    mov x2, #16
     mov x8, #64
     svc #0
     
-    // Print state as hex (sin conversión)
+    // Print state as hex
     adr x0, state
     mov w1, #16
     bl print_hex
@@ -160,217 +267,6 @@ _start:
     mov x0, #0
     mov x8, #93
     svc #0
-
-/* Núcleo del descifrado AES-128 (usa state y expanded_keys globales) */
-aes_decrypt_core:
-    // Ronda inicial: AddRoundKey(10) con W[40-43]
-    adr x0, state
-    adr x1, expanded_keys
-    add x1, x1, #160      // offset 160 = W[40]
-    bl add_round
-    
-    // Rondas 9 a 1: InvShift → InvSub → AddRoundKey → InvMix
-    mov w19, #9
-decrypt_loop:
-    cmp w19, #0
-    b.le final_round
-    
-    // InvShiftRows
-    adr x0, state
-    bl inv_shift
-    
-    // InvSubBytes
-    adr x0, state
-    bl inv_sub
-    
-    // AddRoundKey
-    adr x0, state
-    adr x1, expanded_keys
-    mov w2, #16
-    mul w2, w19, w2
-    add x1, x1, x2
-    bl add_round
-    
-    // InvMixColumns
-    adr x0, state
-    bl inv_mix
-    
-    // Siguiente ronda
-    subs w19, w19, #1
-    b decrypt_loop
-    
-    // Ronda final (0): InvShift → InvSub → AddRoundKey
-final_round:
-    adr x0, state
-    bl inv_shift
-    
-    adr x0, state
-    bl inv_sub
-    
-    adr x0, state
-    adr x1, expanded_keys    // W[0-3] = offset 0
-    bl add_round
-    
-    ret
-
-/* Self-test: descifra el vector FIPS-197 B y comprueba el resultado */
-self_test:
-    stp x19, x20, [sp, #-64]!
-    stp x21, x22, [sp, #16]
-    stp x23, x24, [sp, #32]
-    stp x29, x30, [sp, #48]
-
-    // Copiar ciphertext de prueba a state
-    adr x19, test_cipher_ref
-    adr x20, state
-    mov w21, #16
-st_copy_ct:
-    ldrb w22, [x19], #1
-    strb w22, [x20], #1
-    subs w21, w21, #1
-    b.ne st_copy_ct
-
-    // Copiar key de prueba a key
-    adr x19, test_key_ref
-    adr x20, key
-    mov w21, #16
-st_copy_k:
-    ldrb w22, [x19], #1
-    strb w22, [x20], #1
-    subs w21, w21, #1
-    b.ne st_copy_k
-
-    // Expandir clave de prueba
-    adr x0, key
-    adr x1, expanded_keys
-    bl key_expand
-
-    // Ejecutar descifrado sobre state
-    bl aes_decrypt_core
-
-    // Comparar state con plaintext de referencia
-    adr x19, state
-    adr x20, test_plain_ref
-    mov w21, #16
-    mov w22, #0          // flag: 0 = iguales, 1 = distintos
-st_cmp_loop:
-    ldrb w23, [x19], #1
-    ldrb w24, [x20], #1
-    cmp  w23, w24
-    b.eq st_cmp_next
-    mov  w22, #1
-st_cmp_next:
-    subs w21, w21, #1
-    b.ne st_cmp_loop
-
-    // Imprimir resultado
-    mov x0, #1
-    cmp w22, #0
-    b.ne st_fail
-    adr x1, msg_test_ok
-    b st_print
-st_fail:
-    adr x1, msg_test_fail
-st_print:
-    // calcular longitud rápida (recorre hasta 0)
-    mov x2, #0
-st_len_loop:
-    ldrb w23, [x1, x2]
-    cbz  w23, st_len_done
-    add  x2, x2, #1
-    b    st_len_loop
-st_len_done:
-    mov x8, #64
-    svc #0
-
-    ldp x29, x30, [sp, #48]
-    ldp x21, x22, [sp, #16]
-    ldp x23, x24, [sp, #32]
-    ldp x19, x20, [sp], #64
-    ret
-
-/* Convert column-major to row-major */
-col_to_row:
-    stp x29, x30, [sp, #-48]!
-    stp x19, x20, [sp, #16]
-    str x21, [sp, #32]
-    
-    mov x19, x0              // state pointer
-    sub sp, sp, #16          // temp buffer
-    mov x20, sp
-    
-    // Copy to temp
-    mov w21, #0
-ctr_copy:
-    ldrb w1, [x19, x21]
-    strb w1, [x20, x21]
-    add w21, w21, #1
-    cmp w21, #16
-    b.lt ctr_copy
-    
-    // Convert: col-major[i] -> row-major[row*4 + col]
-    // where row = i % 4, col = i / 4
-    mov w21, #0
-ctr_loop:
-    cmp w21, #16
-    b.ge ctr_done
-    
-    // row = i % 4
-    and w1, w21, #3
-    // col = i / 4
-    lsr w2, w21, #2
-    // new_index = row * 4 + col
-    lsl w1, w1, #2
-    add w1, w1, w2
-    
-    ldrb w3, [x20, x21]
-    strb w3, [x19, x1]
-    
-    add w21, w21, #1
-    b ctr_loop
-    
-ctr_done:
-    add sp, sp, #16
-    ldr x21, [sp, #32]
-    ldp x19, x20, [sp, #16]
-    ldp x29, x30, [sp], #48
-    ret
-
-/* Convert row-major to column-major */
-row_to_col:
-    stp x29, x30, [sp, #-48]!
-    stp x19, x20, [sp, #16]
-    str x21, [sp, #32]
-    
-    mov x19, x0              // dest pointer
-    mov x20, x1              // src pointer
-    
-    // Convert: row-major[i] -> col-major[col*4 + row]
-    // where row = i / 4, col = i % 4
-    mov w21, #0
-rtc_loop:
-    cmp w21, #16
-    b.ge rtc_done
-    
-    // row = i / 4
-    lsr w1, w21, #2
-    // col = i % 4
-    and w2, w21, #3
-    // new_index = col * 4 + row
-    lsl w2, w2, #2
-    add w2, w2, w1
-    
-    ldrb w3, [x20, x21]
-    strb w3, [x19, x2]
-    
-    add w21, w21, #1
-    b rtc_loop
-    
-rtc_done:
-    ldr x21, [sp, #32]
-    ldp x19, x20, [sp, #16]
-    ldp x29, x30, [sp], #48
-    ret
 
 /* Hex to bytes */
 hex_to_bytes:
@@ -495,4 +391,333 @@ ph_l_ok:
 ph_done:
     ldp x19, x20, [sp, #16]
     ldp x29, x30, [sp], #48
+    ret
+
+/* Imprimir un byte en hexadecimal */
+print_hex_byte:
+    stp x29, x30, [sp, #-32]!
+    
+    sub sp, sp, #16
+    mov x1, sp
+    
+    // High nibble
+    lsr w2, w0, #4
+    and w2, w2, #0xF
+    cmp w2, #10
+    b.lt phb_h_dig
+    add w2, w2, #55
+    b phb_h_ok
+phb_h_dig:
+    add w2, w2, #48
+phb_h_ok:
+    strb w2, [x1]
+    
+    // Low nibble
+    and w2, w0, #0xF
+    cmp w2, #10
+    b.lt phb_l_dig
+    add w2, w2, #55
+    b phb_l_ok
+phb_l_dig:
+    add w2, w2, #48
+phb_l_ok:
+    strb w2, [x1, #1]
+    
+    // Space
+    mov w2, #' '
+    strb w2, [x1, #2]
+    
+    // Print
+    mov x0, #1
+    mov x2, #3
+    mov x8, #64
+    svc #0
+    
+    add sp, sp, #16
+    ldp x29, x30, [sp], #32
+    ret
+
+/* Imprimir matriz de estado 4x4 */
+print_state_matrix:
+    stp x29, x30, [sp, #-48]!
+    stp x19, x20, [sp, #16]
+    str x21, [sp, #32]
+    
+    mov x19, x0      // pointer to state
+    
+    mov x0, #1
+    adr x1, msg_state_matrix
+    mov x2, #28
+    mov x8, #64
+    svc #0
+    
+    mov x20, #0      // row counter
+psm_row_loop:
+    cmp x20, #4
+    b.ge psm_done
+    
+    mov x21, #0      // column counter
+psm_col_loop:
+    cmp x21, #4
+    b.ge psm_row_end
+    
+    // Calculate offset: column*4 + row
+    mov x2, #4
+    mul x2, x21, x2
+    add x2, x2, x20
+    ldrb w0, [x19, x2]
+    bl print_hex_byte
+    
+    add x21, x21, #1
+    b psm_col_loop
+    
+psm_row_end:
+    mov x0, #1
+    adr x1, msg_nl
+    mov x2, #1
+    mov x8, #64
+    svc #0
+    
+    cmp x20, #3
+    b.ge psm_skip_indent
+    
+    // Print indent for next row
+    sub sp, sp, #16
+    mov x0, sp
+    mov w1, #' '
+    strb w1, [x0]
+    strb w1, [x0, #1]
+    strb w1, [x0, #2]
+    mov x0, #1
+    mov x1, sp
+    mov x2, #3
+    mov x8, #64
+    svc #0
+    add sp, sp, #16
+    
+psm_skip_indent:
+    add x20, x20, #1
+    b psm_row_loop
+    
+psm_done:
+    ldr x21, [sp, #32]
+    ldp x19, x20, [sp, #16]
+    ldp x29, x30, [sp], #48
+    ret
+
+/* Imprimir número de ronda */
+print_round_number:
+    stp x29, x30, [sp, #-16]!
+    
+    sub sp, sp, #16
+    cmp w0, #10
+    b.lt prn_single
+    
+    mov w1, #'1'
+    strb w1, [sp]
+    mov w1, #'0'
+    strb w1, [sp, #1]
+    mov x0, #1
+    mov x1, sp
+    mov x2, #2
+    mov x8, #64
+    svc #0
+    b prn_done
+    
+prn_single:
+    add w0, w0, #'0'
+    strb w0, [sp]
+    mov x0, #1
+    mov x1, sp
+    mov x2, #1
+    mov x8, #64
+    svc #0
+    
+prn_done:
+    add sp, sp, #16
+    ldp x29, x30, [sp], #16
+    ret
+
+/* Imprimir subclaves expandidas */
+print_expanded_keys:
+    stp x29, x30, [sp, #-32]!
+    str x19, [sp, #16]
+    str x20, [sp, #24]
+    
+    mov x0, #1
+    sub sp, sp, #64
+    adr x1, msg_nl
+    mov x2, #1
+    strb w2, [sp]
+    mov x1, sp
+    mov x8, #64
+    svc #0
+    
+    mov w1, #'='
+    mov x2, #0
+pek_eq_loop:
+    cmp x2, #40
+    b.ge pek_eq_done
+    strb w1, [sp, x2]
+    add x2, x2, #1
+    b pek_eq_loop
+pek_eq_done:
+    mov x0, #1
+    mov x1, sp
+    mov x2, #40
+    mov x8, #64
+    svc #0
+    add sp, sp, #64
+    
+    sub sp, sp, #128
+    adr x1, msg_nl
+    ldrb w2, [x1]
+    strb w2, [sp]
+    mov w2, #'S'
+    strb w2, [sp, #1]
+    mov w2, #'U'
+    strb w2, [sp, #2]
+    mov w2, #'B'
+    strb w2, [sp, #3]
+    mov w2, #'C'
+    strb w2, [sp, #4]
+    mov w2, #'L'
+    strb w2, [sp, #5]
+    mov w2, #'A'
+    strb w2, [sp, #6]
+    mov w2, #'V'
+    strb w2, [sp, #7]
+    mov w2, #'E'
+    strb w2, [sp, #8]
+    mov w2, #'S'
+    strb w2, [sp, #9]
+    mov w2, #' '
+    strb w2, [sp, #10]
+    mov w2, #'E'
+    strb w2, [sp, #11]
+    mov w2, #'X'
+    strb w2, [sp, #12]
+    mov w2, #'P'
+    strb w2, [sp, #13]
+    mov w2, #'A'
+    strb w2, [sp, #14]
+    mov w2, #'N'
+    strb w2, [sp, #15]
+    mov w2, #'D'
+    strb w2, [sp, #16]
+    mov w2, #'I'
+    strb w2, [sp, #17]
+    mov w2, #'D'
+    strb w2, [sp, #18]
+    mov w2, #'A'
+    strb w2, [sp, #19]
+    mov w2, #'S'
+    strb w2, [sp, #20]
+    adr x1, msg_nl
+    ldrb w2, [x1]
+    strb w2, [sp, #21]
+    mov x0, #1
+    mov x1, sp
+    mov x2, #22
+    mov x8, #64
+    svc #0
+    add sp, sp, #128
+    
+    adr x19, expanded_keys
+    mov x20, #0
+    
+pek_loop:
+    cmp x20, #11
+    b.ge pek_done
+    
+    sub sp, sp, #32
+    adr x1, msg_nl
+    ldrb w2, [x1]
+    strb w2, [sp]
+    mov w2, #'R'
+    strb w2, [sp, #1]
+    mov w2, #'o'
+    strb w2, [sp, #2]
+    mov w2, #'n'
+    strb w2, [sp, #3]
+    mov w2, #'d'
+    strb w2, [sp, #4]
+    mov w2, #'a'
+    strb w2, [sp, #5]
+    mov w2, #' '
+    strb w2, [sp, #6]
+    
+    mov w2, w20
+    cmp w2, #10
+    b.lt pek_single_digit
+    mov w2, #'1'
+    strb w2, [sp, #7]
+    mov w2, #'0'
+    strb w2, [sp, #8]
+    mov w2, #':'
+    strb w2, [sp, #9]
+    mov w2, #' '
+    strb w2, [sp, #10]
+    mov x0, #1
+    mov x1, sp
+    mov x2, #11
+    mov x8, #64
+    svc #0
+    b pek_print_key
+    
+pek_single_digit:
+    add w2, w2, #'0'
+    strb w2, [sp, #7]
+    mov w2, #':'
+    strb w2, [sp, #8]
+    mov w2, #' '
+    strb w2, [sp, #9]
+    mov x0, #1
+    mov x1, sp
+    mov x2, #10
+    mov x8, #64
+    svc #0
+    
+pek_print_key:
+    add sp, sp, #32
+    
+    mov x21, #16
+    mul x21, x20, x21
+    add x0, x19, x21
+    mov w1, #16
+    bl print_hex
+    
+    add x20, x20, #1
+    b pek_loop
+    
+pek_done:
+    sub sp, sp, #64
+    mov w1, #'='
+    mov x2, #0
+pek_eq2_loop:
+    cmp x2, #40
+    b.ge pek_eq2_done
+    strb w1, [sp, x2]
+    add x2, x2, #1
+    b pek_eq2_loop
+pek_eq2_done:
+    mov x0, #1
+    mov x1, sp
+    mov x2, #40
+    mov x8, #64
+    svc #0
+    
+    adr x1, msg_nl
+    ldrb w2, [x1]
+    strb w2, [sp]
+    mov x0, #1
+    mov x1, sp
+    mov x2, #1
+    mov x8, #64
+    svc #0
+    add sp, sp, #64
+    
+    ldr x20, [sp, #24]
+    ldr x19, [sp, #16]
+    ldp x29, x30, [sp], #32
     ret

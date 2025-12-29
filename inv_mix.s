@@ -1,17 +1,3 @@
-/* Matriz de constantes inversas de MixColumns (InvMixColumns)
- *   [0E 0B 0D 09]
- *   [09 0E 0B 0D]
- *   [0D 09 0E 0B]
- *   [0B 0D 09 0E]
- */
-.section .data
-.align 4
-inv_mix_mat:
-    .byte 0x0E,0x0B,0x0D,0x09
-    .byte 0x09,0x0E,0x0B,0x0D
-    .byte 0x0D,0x09,0x0E,0x0B
-    .byte 0x0B,0x0D,0x09,0x0E
-
 .section .text
 .align 4
 .global inv_mix
@@ -29,6 +15,12 @@ inv_mix_mat:
  *   [  1,  5,  9, 13 ]  -> fila 1
  *   [  2,  6, 10, 14 ]  -> fila 2
  *   [  3,  7, 11, 15 ]  -> fila 3
+ *
+ * Para cada columna C = [s0,s1,s2,s3]^T se aplica:
+ *   s0' = 0E·s0 ⊕ 0B·s1 ⊕ 0D·s2 ⊕ 09·s3
+ *   s1' = 09·s0 ⊕ 0E·s1 ⊕ 0B·s2 ⊕ 0D·s3
+ *   s2' = 0D·s0 ⊕ 09·s1 ⊕ 0E·s2 ⊕ 0B·s3
+ *   s3' = 0B·s0 ⊕ 0D·s1 ⊕ 09·s2 ⊕ 0E·s3
  */
 
 inv_mix:
@@ -38,127 +30,91 @@ inv_mix:
     stp x25, x26, [sp, #48]
     stp x27, x30, [sp, #64]
 
-    mov  x27, x0             // Guardar puntero original al estado
-
-    // Cargar puntero a matriz de constantes inversas
-    adrp x25, inv_mix_mat
-    add  x25, x25, :lo12:inv_mix_mat
-
-    mov  w19, #0             // índice de columna (0, 4, 8, 12)
+    mov  x27, x0             // Guardar puntero original
+    mov  w19, #0             // offset de columna (0,4,8,12)
 
 inv_mix_col_loop:
     cmp  w19, #16
     b.eq inv_mix_done
 
-    // Para column-major: columna N está en bytes consecutivos N*4 a N*4+3
+    add  x1, x27, x19        // x1 = &state[columna]
+
     // Cargar columna actual s0..s3
-    add x1, x27, x19
     ldrb w2, [x1, #0]        // s0
     ldrb w3, [x1, #1]        // s1
     ldrb w4, [x1, #2]        // s2
     ldrb w5, [x1, #3]        // s3
 
-    // Guardar s0..s3 en buffer temporal en la pila para indexarlos
-    sub  sp, sp, #16
-    strb w2, [sp, #0]
-    strb w3, [sp, #1]
-    strb w4, [sp, #2]
-    strb w5, [sp, #3]
+    // === s0' = 0E·s0 ⊕ 0B·s1 ⊕ 0D·s2 ⊕ 09·s3 ===
+    mov  w0, w2
+    bl   gf_mul14
+    mov  w20, w0             // 0E·s0
 
-    // ===== Fila 0: usar primera fila de la matriz =====
-    // s0' = m00*s0 ⊕ m01*s1 ⊕ m02*s2 ⊕ m03*s3
-    // m0j = inv_mix_mat[0*4 + j]
-    ldrb w1, [x25, #0]
-    ldrb w0, [sp, #0]
-    bl   gf_mul_const
-    mov  w20, w0
+    mov  w0, w3
+    bl   gf_mul11
+    eor  w20, w20, w0        // ⊕ 0B·s1
 
-    ldrb w1, [x25, #1]
-    ldrb w0, [sp, #1]
-    bl   gf_mul_const
-    eor  w20, w20, w0
+    mov  w0, w4
+    bl   gf_mul13
+    eor  w20, w20, w0        // ⊕ 0D·s2
 
-    ldrb w1, [x25, #2]
-    ldrb w0, [sp, #2]
-    bl   gf_mul_const
-    eor  w20, w20, w0
+    mov  w0, w5
+    bl   gf_mul9
+    eor  w20, w20, w0        // ⊕ 09·s3  -> s0'
 
-    ldrb w1, [x25, #3]
-    ldrb w0, [sp, #3]
-    bl   gf_mul_const
-    eor  w20, w20, w0      // s0'
+    // === s1' = 09·s0 ⊕ 0E·s1 ⊕ 0B·s2 ⊕ 0D·s3 ===
+    mov  w0, w2
+    bl   gf_mul9
+    mov  w21, w0             // 09·s0
 
-    // ===== Fila 1: segunda fila de la matriz =====
-    // s1' = m10*s0 ⊕ m11*s1 ⊕ m12*s2 ⊕ m13*s3
-    ldrb w1, [x25, #4]
-    ldrb w0, [sp, #0]
-    bl   gf_mul_const
-    mov  w21, w0
+    mov  w0, w3
+    bl   gf_mul14
+    eor  w21, w21, w0        // ⊕ 0E·s1
 
-    ldrb w1, [x25, #5]
-    ldrb w0, [sp, #1]
-    bl   gf_mul_const
-    eor  w21, w21, w0
+    mov  w0, w4
+    bl   gf_mul11
+    eor  w21, w21, w0        // ⊕ 0B·s2
 
-    ldrb w1, [x25, #6]
-    ldrb w0, [sp, #2]
-    bl   gf_mul_const
-    eor  w21, w21, w0
+    mov  w0, w5
+    bl   gf_mul13
+    eor  w21, w21, w0        // ⊕ 0D·s3  -> s1'
 
-    ldrb w1, [x25, #7]
-    ldrb w0, [sp, #3]
-    bl   gf_mul_const
-    eor  w21, w21, w0      // s1'
+    // === s2' = 0D·s0 ⊕ 09·s1 ⊕ 0E·s2 ⊕ 0B·s3 ===
+    mov  w0, w2
+    bl   gf_mul13
+    mov  w22, w0             // 0D·s0
 
-    // ===== Fila 2: tercera fila de la matriz =====
-    // s2' = m20*s0 ⊕ m21*s1 ⊕ m22*s2 ⊕ m23*s3
-    ldrb w1, [x25, #8]
-    ldrb w0, [sp, #0]
-    bl   gf_mul_const
-    mov  w22, w0
+    mov  w0, w3
+    bl   gf_mul9
+    eor  w22, w22, w0        // ⊕ 09·s1
 
-    ldrb w1, [x25, #9]
-    ldrb w0, [sp, #1]
-    bl   gf_mul_const
-    eor  w22, w22, w0
+    mov  w0, w4
+    bl   gf_mul14
+    eor  w22, w22, w0        // ⊕ 0E·s2
 
-    ldrb w1, [x25, #10]
-    ldrb w0, [sp, #2]
-    bl   gf_mul_const
-    eor  w22, w22, w0
+    mov  w0, w5
+    bl   gf_mul11
+    eor  w22, w22, w0        // ⊕ 0B·s3  -> s2'
 
-    ldrb w1, [x25, #11]
-    ldrb w0, [sp, #3]
-    bl   gf_mul_const
-    eor  w22, w22, w0      // s2'
+    // === s3' = 0B·s0 ⊕ 0D·s1 ⊕ 09·s2 ⊕ 0E·s3 ===
+    mov  w0, w2
+    bl   gf_mul11
+    mov  w23, w0             // 0B·s0
 
-    // ===== Fila 3: cuarta fila de la matriz =====
-    // s3' = m30*s0 ⊕ m31*s1 ⊕ m32*s2 ⊕ m33*s3
-    ldrb w1, [x25, #12]
-    ldrb w0, [sp, #0]
-    bl   gf_mul_const
-    mov  w23, w0
+    mov  w0, w3
+    bl   gf_mul13
+    eor  w23, w23, w0        // ⊕ 0D·s1
 
-    ldrb w1, [x25, #13]
-    ldrb w0, [sp, #1]
-    bl   gf_mul_const
-    eor  w23, w23, w0
+    mov  w0, w4
+    bl   gf_mul9
+    eor  w23, w23, w0        // ⊕ 09·s2
 
-    ldrb w1, [x25, #14]
-    ldrb w0, [sp, #2]
-    bl   gf_mul_const
-    eor  w23, w23, w0
+    mov  w0, w5
+    bl   gf_mul14
+    eor  w23, w23, w0        // ⊕ 0E·s3  -> s3'
 
-    ldrb w1, [x25, #15]
-    ldrb w0, [sp, #3]
-    bl   gf_mul_const
-    eor  w23, w23, w0      // s3'
-
-    // Liberar buffer temporal
-    add  sp, sp, #16
-
-    // Guardar columna transformada (column-major: consecutivos)
-    add  x1, x27, x19
+    // Guardar columna transformada
+    add  x1, x27, x19        // Recalcular puntero
     strb w20, [x1, #0]
     strb w21, [x1, #1]
     strb w22, [x1, #2]
@@ -174,30 +130,6 @@ inv_mix_done:
     ldp x21, x22, [sp, #16]
     ldp x19, x20, [sp], #80
     ret
-
-/* Multiplicación por constante en GF(2^8) para los valores
- * usados en la matriz inversa: 0x09, 0x0B, 0x0D, 0x0E.
- * Entrada: w0 = byte, w1 = constante
- * Salida:  w0 = w0 * w1 en GF(2^8)
- */
-gf_mul_const:
-    cmp w1, #0x09
-    beq gmc_9
-    cmp w1, #0x0B
-    beq gmc_11
-    cmp w1, #0x0D
-    beq gmc_13
-    // Cualquier otro valor esperado (0x0E) usa gf_mul14
-    b   gf_mul14
-
-gmc_9:
-    b   gf_mul9
-
-gmc_11:
-    b   gf_mul11
-
-gmc_13:
-    b   gf_mul13
 
 
 /* =======================
